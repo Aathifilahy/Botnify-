@@ -10,7 +10,15 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 import numpy as np
 from PIL import Image
-import tensorflow as tf
+
+# Optional TensorFlow import
+try:
+    import tensorflow as tf
+    TENSORFLOW_AVAILABLE = True
+except ImportError:
+    TENSORFLOW_AVAILABLE = False
+    print("⚠️ TensorFlow not available - running in mock mode")
+
 from pymongo import MongoClient
 from bson.objectid import ObjectId
 
@@ -38,16 +46,20 @@ MODEL_PATH = "model/plant_disease_model.h5"
 model = None
 use_mock = False
 
-try:
-    if os.path.exists(MODEL_PATH):
-        model = tf.keras.models.load_model(MODEL_PATH)
-        print("✅ Model loaded successfully")
-    else:
-        use_mock = True
-        print("⚠️ Model not found – using mock predictions")
-except Exception as e:
+if not TENSORFLOW_AVAILABLE:
     use_mock = True
-    print(f"❌ Model load error: {e} – using mock predictions")
+    print("⚠️ TensorFlow not installed – using mock predictions")
+else:
+    try:
+        if os.path.exists(MODEL_PATH):
+            model = tf.keras.models.load_model(MODEL_PATH)
+            print("✅ Model loaded successfully")
+        else:
+            use_mock = True
+            print("⚠️ Model not found – using mock predictions")
+    except Exception as e:
+        use_mock = True
+        print(f"❌ Model load error: {e} – using mock predictions")
 
 # Class names (PlantVillage 38 classes – shortened for brevity; full list in train_model.py)
 CLASS_NAMES = [
