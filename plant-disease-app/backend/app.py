@@ -7,6 +7,10 @@ import cloudinary
 import cloudinary.uploader
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+
+allowed_origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
+CORS(app, origins=allowed_origins)
+
 from dotenv import load_dotenv
 import numpy as np
 from PIL import Image
