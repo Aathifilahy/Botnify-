@@ -2,18 +2,19 @@ import os
 import io
 import base64
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables FIRST
+load_dotenv()
 
 import cloudinary
 import cloudinary.uploader
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-
-allowed_origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
-CORS(app, origins=allowed_origins)
-
-from dotenv import load_dotenv
 import numpy as np
 from PIL import Image
+from pymongo import MongoClient
+from bson.objectid import ObjectId
 
 # Optional TensorFlow import
 try:
@@ -23,13 +24,13 @@ except ImportError:
     TENSORFLOW_AVAILABLE = False
     print("⚠️ TensorFlow not available - running in mock mode")
 
-from pymongo import MongoClient
-from bson.objectid import ObjectId
-
-load_dotenv()
-
+# ---------- Create Flask app ----------
 app = Flask(__name__)
-CORS(app, origins=os.getenv("ALLOWED_ORIGINS", "*").split(","))
+
+# ---------- CORS configuration ----------
+# Get allowed origins from environment variable (comma-separated)
+allowed_origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
+CORS(app, origins=allowed_origins)
 
 # ---------- Cloudinary config ----------
 cloudinary.config(
@@ -86,7 +87,6 @@ TREATMENT_MAP = {
     "Early_blight": "Use chlorothalonil or copper fungicide. Water at base.",
     "Late_blight": "Remove infected leaves. Apply copper-based fungicide.",
     "healthy": "No treatment needed. Maintain proper watering and sunlight.",
-    # Add more as needed – fallback generic treatment below
 }
 
 def get_treatment(disease_name):
@@ -124,7 +124,6 @@ def predict_disease(image_bytes):
         class_name = CLASS_NAMES[top_idx]
         plant = class_name.split("___")[0] if "___" in class_name else "Plant"
         disease_display = class_name.split("___")[1] if "___" in class_name else class_name
-        # Get top 5
         top5_indices = np.argsort(predictions)[-5:][::-1]
         top5 = [{"class": CLASS_NAMES[i], "confidence": float(predictions[i])} for i in top5_indices]
         return {
@@ -218,7 +217,6 @@ def get_history():
 @app.route("/history/<scan_id>", methods=["DELETE"])
 def delete_scan(scan_id):
     try:
-        # Find document to get cloudinary id
         doc = scans_collection.find_one({"_id": ObjectId(scan_id)})
         if not doc:
             return jsonify({"error": "Scan not found"}), 404
