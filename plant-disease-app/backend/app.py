@@ -24,11 +24,20 @@ except ImportError:
     TENSORFLOW_AVAILABLE = False
     print("⚠️ TensorFlow not available - running in mock mode")
 
+# ---------- Helper: get session ID ----------
+def get_session_id():
+    """Extract session ID from request headers (X-Session-Id) or query param."""
+    session_id = request.headers.get('X-Session-Id')
+    if not session_id:
+        session_id = request.args.get('sessionId')
+    if not session_id:
+        return None
+    return session_id
+
 # ---------- Create Flask app ----------
 app = Flask(__name__)
 
 # ---------- CORS configuration ----------
-# Get allowed origins from environment variable (comma-separated)
 allowed_origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
 CORS(app, origins=allowed_origins)
 
@@ -103,7 +112,6 @@ def preprocess_image(image_bytes, target_size=(224, 224)):
 
 def predict_disease(image_bytes):
     if use_mock or model is None:
-        # Mock prediction – random top result
         import random
         idx = random.randint(0, len(CLASS_NAMES)-1)
         class_name = CLASS_NAMES[idx]
@@ -144,6 +152,11 @@ def health():
 
 @app.route("/predict", methods=["POST"])
 def predict():
+    # Get session ID from header
+    session_id = get_session_id()
+    if not session_id:
+        return jsonify({"error": "Missing session ID. Please refresh the page."}), 400
+
     if "image" not in request.files:
         return jsonify({"error": "No image provided"}), 400
     file = request.files["image"]
@@ -166,7 +179,7 @@ def predict():
         # 3. Build treatment
         treatment = get_treatment(pred_result["disease"])
 
-        # 4. Save to MongoDB
+        # 4. Save to MongoDB – include session_id
         scan_doc = {
             "image_url": image_url,
             "cloudinary_public_id": public_id,
@@ -175,11 +188,13 @@ def predict():
             "confidence": pred_result["confidence"],
             "treatment": treatment,
             "top_predictions": pred_result["top_predictions"],
+            "session_id": session_id,          # <-- NEW
             "created_at": datetime.utcnow()
         }
         inserted = scans_collection.insert_one(scan_doc)
         scan_doc["_id"] = str(inserted.inserted_id)
-        del scan_doc["cloudinary_public_id"]  # hide from client
+        del scan_doc["cloudinary_public_id"]
+        del scan_doc["session_id"]  # hide from client
 
         return jsonify({
             "success": True,
@@ -197,11 +212,16 @@ def predict():
 
 @app.route("/history", methods=["GET"])
 def get_history():
+    session_id = get_session_id()
+    if not session_id:
+        return jsonify({"error": "Missing session ID"}), 400
+
     page = int(request.args.get("page", 1))
     limit = int(request.args.get("limit", 10))
     skip = (page - 1) * limit
-    total = scans_collection.count_documents({})
-    scans = list(scans_collection.find({}, {"cloudinary_public_id": 0})
+    filter_query = {"session_id": session_id}
+    total = scans_collection.count_documents(filter_query)
+    scans = list(scans_collection.find(filter_query, {"cloudinary_public_id": 0})
                  .sort("created_at", -1).skip(skip).limit(limit))
     for s in scans:
         s["_id"] = str(s["_id"])
@@ -216,10 +236,14 @@ def get_history():
 
 @app.route("/history/<scan_id>", methods=["DELETE"])
 def delete_scan(scan_id):
+    session_id = get_session_id()
+    if not session_id:
+        return jsonify({"error": "Missing session ID"}), 400
+
     try:
-        doc = scans_collection.find_one({"_id": ObjectId(scan_id)})
+        doc = scans_collection.find_one({"_id": ObjectId(scan_id), "session_id": session_id})
         if not doc:
-            return jsonify({"error": "Scan not found"}), 404
+            return jsonify({"error": "Scan not found or not owned by this session"}), 404
         public_id = doc.get("cloudinary_public_id")
         if public_id:
             cloudinary.uploader.destroy(public_id)
