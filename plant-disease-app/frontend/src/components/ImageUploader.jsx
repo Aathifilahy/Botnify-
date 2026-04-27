@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import ResultPanel from './ResultPanel'
+import { getSessionId } from '../session'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
@@ -28,8 +29,12 @@ export default function ImageUploader({ onScanComplete }) {
     formData.append('image', selectedFile)
 
     try {
+      const sessionId = getSessionId()   // ← ADD THIS
       const response = await fetch(`${API_URL}/predict`, {
         method: 'POST',
+        headers: {
+          'X-Session-Id': sessionId,    // ← ADD HEADER
+        },
         body: formData
       })
       const data = await response.json()

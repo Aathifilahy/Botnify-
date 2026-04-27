@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { getSessionId } from '../session'   // <-- ADD THIS
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
@@ -10,8 +11,13 @@ export default function HistoryPanel() {
 
   const fetchHistory = async () => {
     setLoading(true)
+    const sessionId = getSessionId()           // <-- ADD THIS
     try {
-      const res = await fetch(`${API_URL}/history?page=${page}&limit=10`)
+      const res = await fetch(`${API_URL}/history?page=${page}&limit=10`, {
+        headers: {
+          'X-Session-Id': sessionId,          // <-- ADD HEADER
+        }
+      })
       const data = await res.json()
       setScans(data.scans)
       setTotalPages(data.pages)
@@ -24,7 +30,13 @@ export default function HistoryPanel() {
 
   const deleteScan = async (id) => {
     if (!confirm('Delete this scan?')) return
-    await fetch(`${API_URL}/history/${id}`, { method: 'DELETE' })
+    const sessionId = getSessionId()           // <-- ADD THIS
+    await fetch(`${API_URL}/history/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'X-Session-Id': sessionId,            // <-- ADD HEADER
+      }
+    })
     fetchHistory()
   }
 
