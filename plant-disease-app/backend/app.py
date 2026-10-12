@@ -56,7 +56,7 @@ db = mongo_client[mongo_db_name]
 scans_collection = db["scans"]
 
 # ---------- Load model (with mock fallback) ----------
-MODEL_PATH = "model/plant_disease_model.h5"
+MODEL_PATH = "model/bug_bite_model.h5"
 model = None
 use_mock = False
 
@@ -67,7 +67,7 @@ else:
     try:
         if os.path.exists(MODEL_PATH):
             model = tf.keras.models.load_model(MODEL_PATH)
-            print("✅ Model loaded successfully")
+            print("✅ Bug bite model loaded successfully")
         else:
             use_mock = True
             print("⚠️ Model not found – using mock predictions")
@@ -75,84 +75,157 @@ else:
         use_mock = True
         print(f"❌ Model load error: {e} – using mock predictions")
 
-# Class names (PlantVillage 38 classes – shortened for brevity; full list in train_model.py)
+# ---------- Damage classes (insect feeding guilds) ----------
 CLASS_NAMES = [
-    "Apple___Apple_scab", "Apple___Black_rot", "Apple___Cedar_apple_rust", "Apple___healthy",
-    "Blueberry___healthy", "Cherry___Powdery_mildew", "Cherry___healthy",
-    "Corn___Cercospora_leaf_spot", "Corn___Common_rust", "Corn___Northern_Leaf_Blight", "Corn___healthy",
-    "Grape___Black_rot", "Grape___Esca", "Grape___Leaf_blight", "Grape___healthy",
-    "Orange___Haunglongbing", "Peach___Bacterial_spot", "Peach___healthy",
-    "Pepper_bell___Bacterial_spot", "Pepper_bell___healthy",
-    "Potato___Early_blight", "Potato___Late_blight", "Potato___healthy",
-    "Raspberry___healthy", "Soybean___healthy", "Squash___Powdery_mildew",
-    "Strawberry___Leaf_scorch", "Strawberry___healthy",
-    "Tomato___Bacterial_spot", "Tomato___Early_blight", "Tomato___Late_blight",
-    "Tomato___Leaf_Mold", "Tomato___Septoria_leaf_spot", "Tomato___Spider_mites",
-    "Tomato___Target_Spot", "Tomato___Tomato_Yellow_Leaf_Curl_Virus", "Tomato___Tomato_mosaic_virus", "Tomato___healthy"
+    "healthy",
+    "notch_damage",
+    "shothole_damage",
+    "skeletonization",
+    "leaf_mining",
+    "window_paning",
+    "defoliation",
+    "leaf_curl_damage",
+    "stem_damage",
 ]
 
-TREATMENT_MAP = {
-    "Apple_scab": "Apply fungicide (myclobutanil) in early spring. Remove fallen leaves.",
-    "Early_blight": "Use chlorothalonil or copper fungicide. Water at base.",
-    "Late_blight": "Remove infected leaves. Apply copper-based fungicide.",
-    "healthy": "No treatment needed. Maintain proper watering and sunlight.",
+# ---------- Solutions knowledge base ----------
+SOLUTIONS = {
+    "healthy": {
+        "display_name": "Healthy Leaf",
+        "severity": "none",
+        "likely_pests": [],
+        "organic": "No action needed. Continue regular monitoring.",
+        "chemical": "None required.",
+        "cultural": "Maintain healthy soil, proper watering, and inspect weekly.",
+        "urgency": "None"
+    },
+    "notch_damage": {
+        "display_name": "Notch Damage (Marginal Bites)",
+        "severity": "mild_to_moderate",
+        "likely_pests": ["Root weevil", "Leaf-cutter bee", "Vine weevil", "Fuller's rose beetle"],
+        "organic": "Apply beneficial nematodes (Steinernema carpocapsae) to soil for weevil larvae. Spray neem oil on foliage every 7–10 days.",
+        "chemical": "For severe weevil infestation, apply imidacloprid soil drench. Apply only after flowering to protect pollinators.",
+        "cultural": "Remove crop debris. Plant garlic, marigold, or chrysanthemum as repellent companion plants. Use row covers during peak activity.",
+        "urgency": "Address within 7–10 days to prevent larvae damage to roots."
+    },
+    "shothole_damage": {
+        "display_name": "Shot Hole Damage (Small Scattered Holes)",
+        "severity": "moderate",
+        "likely_pests": ["Flea beetle", "Leaf beetle", "Blight beetle"],
+        "organic": "Apply diatomaceous earth around plants. Use neem oil or insecticidal soap spray. Introduce beneficial nematodes.",
+        "chemical": "Apply carbaryl or spinosad spray for severe infestations. Rotate chemicals to avoid resistance.",
+        "cultural": "Plant trap crops like radish or mustard nearby. Use yellow sticky traps. Remove weeds that host beetles.",
+        "urgency": "Act within 5–7 days – flea beetles can defoliate young plants fast."
+    },
+    "skeletonization": {
+        "display_name": "Skeletonization (Only Veins Remain)",
+        "severity": "severe",
+        "likely_pests": ["Caterpillars", "Sawfly larvae", "Beetle larvae", "Leaf-mining moths"],
+        "organic": "Apply Bacillus thuringiensis (Bt) – highly effective against caterpillars. Handpick visible larvae. Introduce parasitic wasps (Trichogramma).",
+        "chemical": "Spray spinosad or chlorantraniliprole. Apply in the evening when caterpillars are active.",
+        "cultural": "Encourage birds and predatory insects. Rotate crops. Remove plant debris after harvest.",
+        "urgency": "Immediate action required – can strip entire plants within days."
+    },
+    "leaf_mining": {
+        "display_name": "Leaf Mining (Serpentine/Blotch Tunnels)",
+        "severity": "moderate",
+        "likely_pests": ["Leaf miner fly", "Citrus leafminer", "Moth larvae", "Beetle miners"],
+        "organic": "Remove and destroy mined leaves. Use yellow sticky traps for adult flies. Apply neem oil or spinosad spray every 7 days.",
+        "chemical": "Apply abamectin or cyromazine for severe cases. Systemic insecticides are most effective.",
+        "cultural": "Introduce parasitic wasps (Diglyphus isaea). Avoid excessive nitrogen fertiliser which attracts miners.",
+        "urgency": "Act within 10–14 days – miners reproduce quickly in warm weather."
+    },
+    "window_paning": {
+        "display_name": "Window Paning (Transparent Tissue Left)",
+        "severity": "mild",
+        "likely_pests": ["Young caterpillars", "Small beetles", "Leaf-rollers"],
+        "organic": "Apply neem oil spray. Introduce ladybugs and lacewings. Handpick small caterpillars.",
+        "chemical": "Bt spray for caterpillars. Insecticidal soap for beetles.",
+        "cultural": "Regular inspection. Encourage natural predators. Avoid overhead watering.",
+        "urgency": "Monitor closely – can progress to full defoliation if untreated."
+    },
+    "defoliation": {
+        "display_name": "Defoliation (Entire Leaf Consumed)",
+        "severity": "severe",
+        "likely_pests": ["Grasshoppers", "Armyworms", "Locusts", "Large caterpillars"],
+        "organic": "Apply Nosema locustae bait for grasshoppers. Bt for armyworms. Use row covers. Plant border trap crops.",
+        "chemical": "Apply cypermethrin or lambda-cyhalothrin for severe infestations. Treat in early morning.",
+        "cultural": "Tillage to expose soil-borne larvae. Encourage birds. Remove tall grass near crop.",
+        "urgency": "Emergency – immediate action within 24–48 hours."
+    },
+    "leaf_curl_damage": {
+        "display_name": "Leaf Curl / Distortion",
+        "severity": "moderate",
+        "likely_pests": ["Aphids", "Thrips", "Whiteflies", "Leafhoppers"],
+        "organic": "Spray neem oil or insecticidal soap. Introduce ladybugs and lacewings. Use yellow sticky traps.",
+        "chemical": "Apply imidacloprid or thiamethoxam for severe sucking-pest infestations.",
+        "cultural": "Remove infected leaves. Avoid overcrowding. Use reflective mulch.",
+        "urgency": "Act within 7 days – sucking pests transmit viruses."
+    },
+    "stem_damage": {
+        "display_name": "Stem Damage / Borer Holes",
+        "severity": "severe",
+        "likely_pests": ["Stem borer", "Cane borer", "Weevil larvae", "Cutworms"],
+        "organic": "Insert beneficial nematodes into borer holes. Apply Bt. Cut and destroy affected stems.",
+        "chemical": "Apply carbaryl or chlorpyrifos as a stem spray. Inject insecticide into borer holes.",
+        "cultural": "Destroy crop residues. Rotate with non-host crops. Use pheromone traps for adults.",
+        "urgency": "Immediate – borers can kill the plant from inside."
+    }
 }
 
-def get_treatment(disease_name):
-    for key, treatment in TREATMENT_MAP.items():
-        if key.lower() in disease_name.lower():
-            return treatment
-    return "Remove affected parts and apply broad-spectrum fungicide. Consult local extension."
+def get_solution(damage_class):
+    return SOLUTIONS.get(damage_class, SOLUTIONS["healthy"])
 
+# ---------- Image preprocess ----------
 def preprocess_image(image_bytes, target_size=(224, 224)):
     img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     img = img.resize(target_size)
     img_array = np.array(img) / 255.0
     return np.expand_dims(img_array, axis=0)
 
-def predict_disease(image_bytes):
+# ---------- Prediction ----------
+def predict_damage(image_bytes):
     if use_mock or model is None:
         import random
-        idx = random.randint(0, len(CLASS_NAMES)-1)
+        idx = random.randint(0, len(CLASS_NAMES) - 1)
         class_name = CLASS_NAMES[idx]
         confidence = round(random.uniform(0.65, 0.95), 2)
-        plant = class_name.split("___")[0] if "___" in class_name else "Plant"
-        disease_display = class_name.split("___")[1] if "___" in class_name else class_name
+        top5 = [
+            {"class": cn, "confidence": round(random.uniform(0.1, 0.9), 2)}
+            for cn in random.sample(CLASS_NAMES, min(5, len(CLASS_NAMES)))
+        ]
         return {
-            "plant": plant,
-            "disease": disease_display,
+            "damage_class": class_name,
             "confidence": confidence,
-            "top_predictions": [{"class": cn, "confidence": round(random.uniform(0.1,0.9),2)} for cn in CLASS_NAMES[:5]]
+            "top_predictions": top5
         }
     else:
         processed = preprocess_image(image_bytes)
         predictions = model.predict(processed)[0]
-        top_idx = np.argmax(predictions)
+        top_idx = int(np.argmax(predictions))
         confidence = float(predictions[top_idx])
         class_name = CLASS_NAMES[top_idx]
-        plant = class_name.split("___")[0] if "___" in class_name else "Plant"
-        disease_display = class_name.split("___")[1] if "___" in class_name else class_name
         top5_indices = np.argsort(predictions)[-5:][::-1]
         top5 = [{"class": CLASS_NAMES[i], "confidence": float(predictions[i])} for i in top5_indices]
         return {
-            "plant": plant,
-            "disease": disease_display,
+            "damage_class": class_name,
             "confidence": confidence,
             "top_predictions": top5
         }
 
+# ---------- Routes ----------
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({
         "status": "ok",
         "mock_mode": use_mock,
+        "model": "bug_bite_classifier",
         "cloudinary": "configured" if os.getenv("CLOUDINARY_CLOUD_NAME") else "missing",
         "mongodb": "connected" if mongo_client else "error"
     })
 
 @app.route("/predict", methods=["POST"])
 def predict():
-    # Get session ID from header
     session_id = get_session_id()
     if not session_id:
         return jsonify({"error": "Missing session ID. Please refresh the page."}), 400
@@ -162,49 +235,62 @@ def predict():
     file = request.files["image"]
     if file.filename == "":
         return jsonify({"error": "Empty filename"}), 400
+
     try:
         image_bytes = file.read()
+
         # 1. Upload to Cloudinary
         upload_result = cloudinary.uploader.upload(
             io.BytesIO(image_bytes),
-            folder="plant_disease_scans",
+            folder="bug_bite_scans",
             transformation={"width": 800, "height": 800, "crop": "limit", "quality": "auto"}
         )
         image_url = upload_result["secure_url"]
         public_id = upload_result["public_id"]
 
-        # 2. Run ML prediction
-        pred_result = predict_disease(image_bytes)
+        # 2. Predict damage type
+        pred = predict_damage(image_bytes)
 
-        # 3. Build treatment
-        treatment = get_treatment(pred_result["disease"])
+        # 3. Get solution
+        solution = get_solution(pred["damage_class"])
 
-        # 4. Save to MongoDB – include session_id
+        # 4. Save to MongoDB
         scan_doc = {
             "image_url": image_url,
             "cloudinary_public_id": public_id,
-            "plant": pred_result["plant"],
-            "disease": pred_result["disease"],
-            "confidence": pred_result["confidence"],
-            "treatment": treatment,
-            "top_predictions": pred_result["top_predictions"],
-            "session_id": session_id,          # <-- NEW
+            "damage_class": pred["damage_class"],
+            "damage_display": solution["display_name"],
+            "severity": solution["severity"],
+            "likely_pests": solution["likely_pests"],
+            "confidence": pred["confidence"],
+            "top_predictions": pred["top_predictions"],
+            "treatment": {
+                "organic": solution["organic"],
+                "chemical": solution["chemical"],
+                "cultural": solution["cultural"]
+            },
+            "urgency": solution["urgency"],
+            "session_id": session_id,
             "created_at": datetime.utcnow()
         }
         inserted = scans_collection.insert_one(scan_doc)
-        scan_doc["_id"] = str(inserted.inserted_id)
-        del scan_doc["cloudinary_public_id"]
-        del scan_doc["session_id"]  # hide from client
 
         return jsonify({
             "success": True,
             "scan_id": str(inserted.inserted_id),
             "image_url": image_url,
-            "plant": pred_result["plant"],
-            "disease": pred_result["disease"],
-            "confidence": pred_result["confidence"],
-            "treatment": treatment,
-            "top_predictions": pred_result["top_predictions"],
+            "damage_class": pred["damage_class"],
+            "damage_display": solution["display_name"],
+            "severity": solution["severity"],
+            "likely_pests": solution["likely_pests"],
+            "confidence": pred["confidence"],
+            "top_predictions": pred["top_predictions"],
+            "treatment": {
+                "organic": solution["organic"],
+                "chemical": solution["chemical"],
+                "cultural": solution["cultural"]
+            },
+            "urgency": solution["urgency"],
             "mock_mode": use_mock
         })
     except Exception as e:
@@ -219,6 +305,7 @@ def get_history():
     page = int(request.args.get("page", 1))
     limit = int(request.args.get("limit", 10))
     skip = (page - 1) * limit
+
     filter_query = {"session_id": session_id}
     total = scans_collection.count_documents(filter_query)
     scans = list(scans_collection.find(filter_query, {"cloudinary_public_id": 0})
@@ -226,6 +313,7 @@ def get_history():
     for s in scans:
         s["_id"] = str(s["_id"])
         s["created_at"] = s["created_at"].isoformat()
+
     return jsonify({
         "scans": scans,
         "page": page,

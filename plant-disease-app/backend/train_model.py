@@ -5,11 +5,10 @@ from tensorflow.keras.applications import MobileNetV2
 from tensorflow.keras.layers import Dense, GlobalAveragePooling2D, Dropout
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
-import numpy as np
 
 # Paths
-DATA_DIR = "data/PlantVillage"
-MODEL_SAVE_PATH = "model/plant_disease_model.h5"
+DATA_DIR = "data/BugBite"
+MODEL_SAVE_PATH = "model/bug_bite_model.h5"
 IMG_SIZE = 224
 BATCH_SIZE = 32
 EPOCHS_FIRST = 10
@@ -17,8 +16,10 @@ EPOCHS_FINE = 15
 
 def main():
     if not os.path.exists(DATA_DIR):
-        print(f"Error: Dataset not found at {DATA_DIR}")
-        print("Download from https://www.kaggle.com/datasets/emmarex/plantdisease")
+        print(f"❌ Dataset not found at {DATA_DIR}")
+        print("Expected structure: data/BugBite/<damage_class>/images...")
+        print("Damage classes: healthy, notch_damage, shothole_damage, skeletonization,")
+        print("                leaf_mining, window_paning, defoliation, leaf_curl_damage, stem_damage")
         return
 
     # Data generators with augmentation
@@ -51,7 +52,9 @@ def main():
 
     num_classes = train_generator.num_classes
     class_names = list(train_generator.class_indices.keys())
-    print(f"Found {num_classes} classes:", class_names[:5], "...")
+    print(f"✅ Found {num_classes} damage classes:")
+    for i, name in enumerate(class_names, 1):
+        print(f"   {i}. {name}")
 
     # Load base model
     base_model = MobileNetV2(weights='imagenet', include_top=False, input_shape=(IMG_SIZE, IMG_SIZE, 3))
@@ -68,9 +71,11 @@ def main():
     model.compile(optimizer=Adam(learning_rate=0.001), loss='categorical_crossentropy', metrics=['accuracy'])
 
     # Phase 1: train only head
+    print("\n🔹 Phase 1: Training classification head...")
     model.fit(train_generator, validation_data=val_generator, epochs=EPOCHS_FIRST)
 
     # Phase 2: fine-tune
+    print("\n🔹 Phase 2: Fine-tuning...")
     base_model.trainable = True
     for layer in base_model.layers[:100]:
         layer.trainable = False
@@ -79,12 +84,13 @@ def main():
 
     os.makedirs("model", exist_ok=True)
     model.save(MODEL_SAVE_PATH)
-    print(f"Model saved to {MODEL_SAVE_PATH}")
+    print(f"\n✅ Model saved to {MODEL_SAVE_PATH}")
 
     # Save class names for backend reference
     with open("model/class_names.txt", "w") as f:
         for name in class_names:
             f.write(name + "\n")
+    print(f"✅ Class names saved to model/class_names.txt ({len(class_names)} classes)")
 
 if __name__ == "__main__":
     main()
