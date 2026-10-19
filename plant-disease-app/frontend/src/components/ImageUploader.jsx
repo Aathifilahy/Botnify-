@@ -29,11 +29,11 @@ export default function ImageUploader({ onScanComplete }) {
     formData.append('image', selectedFile)
 
     try {
-      const sessionId = getSessionId()   // ← ADD THIS
+      const sessionId = getSessionId()
       const response = await fetch(`${API_URL}/predict`, {
         method: 'POST',
         headers: {
-          'X-Session-Id': sessionId,    // ← ADD HEADER
+          'X-Session-Id': sessionId,
         },
         body: formData
       })
@@ -50,14 +50,40 @@ export default function ImageUploader({ onScanComplete }) {
 
   return (
     <div className="card">
+      <h3>🐛 Upload Leaf Image</h3>
+      <p style={{ marginBottom: '1rem', color: '#8bc0a0' }}>
+        Upload a photo of a damaged leaf to identify the pest damage type.
+      </p>
+
       <input type="file" accept="image/*" onChange={handleFileChange} />
-      {preview && <img src={preview} alt="Preview" style={{ maxWidth: '100%', marginTop: '1rem', borderRadius: '16px' }} />}
+
+      {preview && (
+        <img
+          src={preview}
+          alt="Preview"
+          style={{
+            maxWidth: '100%',
+            maxHeight: '400px',
+            marginTop: '1rem',
+            borderRadius: 0,
+            border: '1px solid #3c7a5a',
+            display: 'block'
+          }}
+        />
+      )}
+
       <div style={{ marginTop: '1rem' }}>
         <button onClick={handleUpload} disabled={!selectedFile || loading}>
-          {loading ? 'Analyzing...' : '🔍 Identify Disease'}
+          {loading ? '⏳ Analyzing...' : '🔍 Identify Damage'}
         </button>
       </div>
-      {error && <p style={{ color: '#ffaa88' }}>❌ {error}</p>}
+
+      {error && (
+        <p style={{ color: '#ffaa88', marginTop: '1rem' }}>
+          ❌ {error}
+        </p>
+      )}
+
       {result && <ResultPanel result={result} />}
     </div>
   )

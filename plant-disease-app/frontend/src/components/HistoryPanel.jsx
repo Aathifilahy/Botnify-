@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getSessionId } from '../session'   // <-- ADD THIS
+import { getSessionId } from '../session'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
@@ -11,11 +11,11 @@ export default function HistoryPanel() {
 
   const fetchHistory = async () => {
     setLoading(true)
-    const sessionId = getSessionId()           // <-- ADD THIS
+    const sessionId = getSessionId()
     try {
       const res = await fetch(`${API_URL}/history?page=${page}&limit=10`, {
         headers: {
-          'X-Session-Id': sessionId,          // <-- ADD HEADER
+          'X-Session-Id': sessionId,
         }
       })
       const data = await res.json()
@@ -30,11 +30,11 @@ export default function HistoryPanel() {
 
   const deleteScan = async (id) => {
     if (!confirm('Delete this scan?')) return
-    const sessionId = getSessionId()           // <-- ADD THIS
+    const sessionId = getSessionId()
     await fetch(`${API_URL}/history/${id}`, {
       method: 'DELETE',
       headers: {
-        'X-Session-Id': sessionId,            // <-- ADD HEADER
+        'X-Session-Id': sessionId,
       }
     })
     fetchHistory()
@@ -49,21 +49,68 @@ export default function HistoryPanel() {
   return (
     <div className="card">
       <h3>📋 Previous Scans</h3>
+
       {scans.length === 0 && <p>No scans yet. Upload a leaf image first.</p>}
+
       {scans.map(scan => (
-        <div key={scan._id} style={{ borderBottom: '1px solid #3c7a5a', padding: '1rem 0', display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          <img src={scan.image_url} alt="leaf" style={{ width: '70px', height: '70px', objectFit: 'cover', borderRadius: '12px' }} />
+        <div
+          key={scan._id}
+          style={{
+            borderBottom: '1px solid #3c7a5a',
+            padding: '1rem 0',
+            display: 'flex',
+            gap: '1rem',
+            alignItems: 'center'
+          }}
+        >
+          <img
+            src={scan.image_url}
+            alt="leaf"
+            style={{
+              width: '70px',
+              height: '70px',
+              objectFit: 'cover',
+              borderRadius: 0,
+              border: '1px solid #3c7a5a'
+            }}
+          />
           <div style={{ flex: 1 }}>
-            <strong>{scan.plant}</strong> — {scan.disease}<br />
-            <small>Confidence: {(scan.confidence * 100).toFixed(0)}% &nbsp;|&nbsp; {new Date(scan.created_at).toLocaleString()}</small>
+            <strong>{scan.damage_display || scan.damage_class || 'Unknown'}</strong>
+            {scan.severity && (
+              <span style={{ color: '#8bc0a0' }}> — {scan.severity}</span>
+            )}
+            <br />
+            <small>
+              Confidence: {(scan.confidence * 100).toFixed(0)}%
+              &nbsp;|&nbsp;
+              {new Date(scan.created_at).toLocaleString()}
+            </small>
+            {scan.likely_pests?.length > 0 && (
+              <>
+                <br />
+                <small style={{ color: '#8bc0a0' }}>
+                  🐜 {scan.likely_pests.join(', ')}
+                </small>
+              </>
+            )}
           </div>
-          <button onClick={() => deleteScan(scan._id)} style={{ background: '#8b3c3c' }}>🗑️</button>
+          <button
+            onClick={() => deleteScan(scan._id)}
+            style={{ background: '#8b3c3c', border: '1px solid #5a2a2a' }}
+          >
+            🗑️
+          </button>
         </div>
       ))}
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem' }}>
-        <button disabled={page === 1} onClick={() => setPage(p => p-1)}>◀ Previous</button>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem', alignItems: 'center' }}>
+        <button disabled={page === 1} onClick={() => setPage(p => p - 1)}>
+          ◀ Previous
+        </button>
         <span>Page {page} of {totalPages}</span>
-        <button disabled={page === totalPages} onClick={() => setPage(p => p+1)}>Next ▶</button>
+        <button disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>
+          Next ▶
+        </button>
       </div>
     </div>
   )
